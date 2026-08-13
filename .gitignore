@@ -1,0 +1,7 @@
+.build/
+.build-local/
+.swiftpm/
+work/
+outputs/*.app/
+outputs/*.zip
+.DS_Store
