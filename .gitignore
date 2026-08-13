@@ -1,6 +1,7 @@
 .build/
 .build-local/
 .swiftpm/
+.superpowers/
 work/
 outputs/*.app
 outputs/*.zip
