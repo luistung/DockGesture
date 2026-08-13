@@ -1,45 +1,41 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
-
-struct PermissionStatus: Equatable {
-    let accessibility: Bool
-    let inputMonitoring: Bool
-
-    var isReady: Bool {
-        accessibility && inputMonitoring
-    }
-}
+import DockGestureCore
 
 final class PermissionController {
-    var currentStatus: PermissionStatus {
-        PermissionStatus(
+    var currentStatus: PermissionAvailability {
+        PermissionAvailability(
             accessibility: AXIsProcessTrusted(),
             inputMonitoring: CGPreflightListenEventAccess()
         )
     }
 
-    func requestPermissions() {
+    func requestAccessibilityPermission() {
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+    }
 
+    func requestInputMonitoringPermission() {
         if !CGPreflightListenEventAccess() {
             _ = CGRequestListenEventAccess()
         }
     }
 
-    func openAccessibilitySettings() {
+    @discardableResult
+    func openAccessibilitySettings() -> Bool {
         openSettings(anchor: "Privacy_Accessibility")
     }
 
-    func openInputMonitoringSettings() {
+    @discardableResult
+    func openInputMonitoringSettings() -> Bool {
         openSettings(anchor: "Privacy_ListenEvent")
     }
 
-    private func openSettings(anchor: String) {
+    private func openSettings(anchor: String) -> Bool {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else {
-            return
+            return false
         }
-        NSWorkspace.shared.open(url)
+        return NSWorkspace.shared.open(url)
     }
 }

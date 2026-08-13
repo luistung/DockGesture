@@ -130,6 +130,59 @@ expect(
 )
 expect(forceTarget.calls == [.forceTerminate], "强制退出只能调用 forceTerminate")
 
+expect(
+    PermissionAvailability(accessibility: false, inputMonitoring: false)
+        .missingPermissionsDescription == "缺少辅助功能和输入监控权限",
+    "两项权限均缺少时应显示精确状态"
+)
+expect(
+    PermissionAvailability(accessibility: false, inputMonitoring: true)
+        .missingPermissionsDescription == "缺少辅助功能权限",
+    "应精确显示缺少辅助功能权限"
+)
+expect(
+    PermissionAvailability(accessibility: true, inputMonitoring: false)
+        .missingPermissionsDescription == "缺少输入监控权限",
+    "应精确显示缺少输入监控权限"
+)
+
+let missingInput = PermissionAvailability(accessibility: true, inputMonitoring: false)
+let firstAutomaticGuide = PermissionGuidancePlan.make(
+    availability: missingInput,
+    trigger: .automatic,
+    automaticGuideAlreadyShown: false
+)
+let laterAutomaticPoll = PermissionGuidancePlan.make(
+    availability: missingInput,
+    trigger: .automatic,
+    automaticGuideAlreadyShown: true
+)
+let manualGuide = PermissionGuidancePlan.make(
+    availability: missingInput,
+    trigger: .manual,
+    automaticGuideAlreadyShown: true
+)
+expect(firstAutomaticGuide.showInputMonitoringGuide, "首次缺少输入监控时应显示引导")
+expect(firstAutomaticGuide.markAutomaticGuideAsShown, "首次引导应记录已显示")
+expect(!laterAutomaticPoll.showInputMonitoringGuide, "轮询不得重复显示首次引导")
+expect(manualGuide.showInputMonitoringGuide, "菜单手动检查应能再次显示引导")
+
+let onlyAccessibilityMissing = PermissionGuidancePlan.make(
+    availability: .init(accessibility: false, inputMonitoring: true),
+    trigger: .manual,
+    automaticGuideAlreadyShown: true
+)
+expect(onlyAccessibilityMissing.requestAccessibility, "缺少辅助功能时应请求授权")
+expect(onlyAccessibilityMissing.openAccessibilitySettings, "手动检查应打开辅助功能设置")
+
+let allPermissionsReady = PermissionGuidancePlan.make(
+    availability: .init(accessibility: true, inputMonitoring: true),
+    trigger: .manual,
+    automaticGuideAlreadyShown: false
+)
+expect(allPermissionsReady.permissionsReady, "权限齐全时应报告就绪")
+expect(!allPermissionsReady.showInputMonitoringGuide, "权限齐全时不得显示输入监控引导")
+
 if failures == 0 {
     print("PASS: \(checks) checks")
 } else {

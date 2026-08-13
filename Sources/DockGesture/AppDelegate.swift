@@ -1,16 +1,18 @@
 import AppKit
+import DockGestureCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private enum DefaultsKey {
         static let featureEnabled = "featureEnabled"
-        static let didRequestPermissions = "didRequestPermissions"
+        static let didShowInputMonitoringGuide = "didShowInputMonitoringGuide"
     }
 
     private let permissionController = PermissionController()
     private let loginItemController = LoginItemController()
     private let actionController = AppActionController()
     private let eventTap = DockEventTap(resolver: DockItemResolver())
+    private let guidancePresenter = PermissionGuidancePresenter()
 
     private var statusBarController: StatusBarController?
     private var permissionTimer: Timer?
@@ -38,11 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             repeats: true
         )
 
-        if !UserDefaults.standard.bool(forKey: DefaultsKey.didRequestPermissions) {
-            UserDefaults.standard.set(true, forKey: DefaultsKey.didRequestPermissions)
-            permissionController.requestPermissions()
-        }
-
+        handlePermissionGuidance(trigger: .automatic)
         reevaluateRuntime()
     }
 
@@ -75,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.setLoginItemEnabled(enabled)
         }
         statusBar.onRequestPermissions = { [weak self] in
-            self?.permissionController.requestPermissions()
+            self?.handlePermissionGuidance(trigger: .manual)
             self?.reevaluateRuntime()
         }
         statusBar.onOpenAccessibility = { [weak self] in
@@ -106,9 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard permissionController.currentStatus.isReady else {
+        let permissionStatus = permissionController.currentStatus
+        guard permissionStatus.isReady else {
             eventTap.stop()
-            runtimeState = .needsPermissions
+            runtimeState = .needsPermissions(permissionStatus)
             refreshMenu()
             return
         }
@@ -116,6 +115,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runtimeState = eventTap.start()
             ? .running
             : .error("无法启动鼠标事件监听")
+        refreshMenu()
+    }
+
+    private func handlePermissionGuidance(trigger: PermissionGuidanceTrigger) {
+        let status = permissionController.currentStatus
+        let plan = PermissionGuidancePlan.make(
+            availability: status,
+            trigger: trigger,
+            automaticGuideAlreadyShown: UserDefaults.standard.bool(
+                forKey: DefaultsKey.didShowInputMonitoringGuide
+            )
+        )
+
+        if plan.markAutomaticGuideAsShown {
+            UserDefaults.standard.set(
+                true,
+                forKey: DefaultsKey.didShowInputMonitoringGuide
+            )
+        }
+
+        if plan.showInputMonitoringGuide {
+            switch guidancePresenter.showInputMonitoringGuide() {
+            case .openSettings:
+                permissionController.requestInputMonitoringPermission()
+                let opened = permissionController.openInputMonitoringSettings()
+                lastAction = opened
+                    ? "已打开输入监控设置"
+                    : "请手动打开隐私与安全性 → 输入监控"
+            case .later:
+                lastAction = "输入监控权限尚未开启"
+            }
+        }
+
+        if plan.requestAccessibility {
+            if plan.showInputMonitoringGuide {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.permissionController.requestAccessibilityPermission()
+                }
+            } else {
+                permissionController.requestAccessibilityPermission()
+            }
+        }
+
+        if plan.openAccessibilitySettings {
+            let opened = permissionController.openAccessibilitySettings()
+            lastAction = opened
+                ? "已打开辅助功能设置"
+                : "请手动打开隐私与安全性 → 辅助功能"
+        }
+
+        if plan.permissionsReady {
+            lastAction = "所需权限均已授予"
+        }
+
         refreshMenu()
     }
 

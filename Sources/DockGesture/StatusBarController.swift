@@ -37,7 +37,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         menu.addItem(loginItem)
         menu.addItem(lastActionItem)
         menu.addItem(.separator())
-        menu.addItem(item("请求/重新检查权限", #selector(requestPermissions)))
+        menu.addItem(item("检查并引导权限", #selector(requestPermissions)))
         menu.addItem(item("打开辅助功能设置", #selector(openAccessibility)))
         menu.addItem(item("打开输入监控设置", #selector(openInputMonitoring)))
         menu.addItem(item("打开登录项设置", #selector(openLoginItems)))
