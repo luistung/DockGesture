@@ -10,7 +10,7 @@ Finder 与其他应用使用相同规则。文件夹、废纸篓、分隔线和�
 
 ## 安装和首次运行
 
-当前修订版应用位于 `outputs/DockGesture-1.0.1.app`，便于传递的压缩包位于 `outputs/DockGesture-1.0.1.zip`。建议先把应用移动到“应用程序”文件夹，再首次打开；授予权限后不要再移动应用，否则 macOS 可能要求重新授权。
+当前修订版应用位于 `outputs/DockGesture-1.0.2.app`，便于传递的压缩包位于 `outputs/DockGesture-1.0.2.zip`。1.0.2 加入了蓝紫色 Dock 点击应用图标。建议先把应用移动到“应用程序”文件夹，再首次打开；授予权限后不要再移动应用，否则 macOS 可能要求重新授权。
 
 1. 打开 DockGesture，菜单栏会出现手指图标或警告图标。
 2. 缺少输入监控权限时，应用会显示中文步骤说明。点击“打开输入监控设置”，在列表中开启 DockGesture；如果列表中没有它，点击“+”从“应用程序”文件夹添加。
@@ -37,10 +37,11 @@ Finder 与其他应用使用相同规则。文件夹、废纸篓、分隔线和�
 
 ```bash
 ./scripts/test.sh
+./scripts/build-icon.sh
 ./scripts/build.sh
 ```
 
-构建脚本使用 Swift 6，并为当前电脑的处理器架构生成 ad-hoc 签名应用。项目也提供标准 `Package.swift`；如果本机 Command Line Tools 的 SwiftPM 组件版本一致，可直接运行 `swift test`。
+`build-icon.sh` 使用 librsvg 和 macOS `iconutil` 从源 SVG 生成 PNG 与 ICNS。应用构建脚本使用 Swift 6，并为当前电脑的处理器架构生成 ad-hoc 签名应用。项目也提供标准 `Package.swift`；如果本机 Command Line Tools 的 SwiftPM 组件版本一致，可直接运行 `swift test`。
 
 部分混合版本的 Command Line Tools 会重复声明 `SwiftBridging` 模块。脚本通过编译器 VFS overlay 临时隐藏重复声明，不会修改任何系统文件。
 
