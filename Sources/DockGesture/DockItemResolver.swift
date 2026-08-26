@@ -11,6 +11,11 @@ final class ResolvedDockApplication: @unchecked Sendable {
     }
 }
 
+struct DockApplicationItemSnapshot {
+    let accessibilityFrame: CGRect
+    let applications: [NSRunningApplication]
+}
+
 final class DockItemResolver {
     private let systemWideElement = AXUIElementCreateSystemWide()
     private let dockBundleIdentifier = "com.apple.dock"
@@ -53,26 +58,32 @@ final class DockItemResolver {
         return nil
     }
 
+    func applicationSnapshots() -> [DockApplicationItemSnapshot] {
+        guard let dockPID = dockProcessIdentifier() else {
+            return []
+        }
+
+        let dockElement = AXUIElementCreateApplication(dockPID)
+        return applicationDockItems(in: dockElement, dockPID: dockPID, depth: 0).compactMap {
+            guard let frame = rect(of: $0) else {
+                return nil
+            }
+            let applications = runningApplications(for: $0)
+            guard !applications.isEmpty else {
+                return nil
+            }
+            return DockApplicationItemSnapshot(
+                accessibilityFrame: frame,
+                applications: applications
+            )
+        }
+    }
+
     private func resolveApplication(
         from element: AXUIElement,
         frontmost: NSRunningApplication?
     ) -> ResolvedDockApplication? {
-        let itemURL = urlAttribute(kAXURLAttribute as CFString, of: element)
-        let itemBundleIdentifier = itemURL.flatMap { Bundle(url: $0)?.bundleIdentifier }
-
-        let candidates: [NSRunningApplication]
-        if let itemBundleIdentifier {
-            candidates = NSRunningApplication.runningApplications(
-                withBundleIdentifier: itemBundleIdentifier
-            )
-        } else {
-            let title = stringAttribute(kAXTitleAttribute as CFString, of: element)
-            guard let title else { return nil }
-            candidates = NSWorkspace.shared.runningApplications.filter {
-                $0.activationPolicy == .regular && $0.localizedName == title
-            }
-            guard candidates.count == 1 else { return nil }
-        }
+        let candidates = runningApplications(for: element)
 
         guard !candidates.isEmpty else { return nil }
 
@@ -81,19 +92,62 @@ final class DockItemResolver {
             return ResolvedDockApplication(application: match)
         }
 
-        if let itemURL {
-            let itemPath = itemURL.standardizedFileURL.path
-            if let exactMatch = candidates.first(where: {
-                $0.bundleURL?.standardizedFileURL.path == itemPath
-            }) {
-                return ResolvedDockApplication(application: exactMatch)
-            }
-        }
-
         guard let regular = candidates.first(where: { $0.activationPolicy == .regular }) else {
             return nil
         }
         return ResolvedDockApplication(application: regular)
+    }
+
+    private func dockProcessIdentifier() -> pid_t? {
+        NSRunningApplication
+            .runningApplications(withBundleIdentifier: dockBundleIdentifier)
+            .first?
+            .processIdentifier
+    }
+
+    private func applicationDockItems(
+        in element: AXUIElement,
+        dockPID: pid_t,
+        depth: Int
+    ) -> [AXUIElement] {
+        guard depth <= 8, processIdentifier(of: element) == dockPID else {
+            return []
+        }
+        if stringAttribute(kAXSubroleAttribute as CFString, of: element)
+            == (kAXApplicationDockItemSubrole as String) {
+            return [element]
+        }
+
+        return elementsAttribute(kAXChildrenAttribute as CFString, of: element).flatMap {
+            applicationDockItems(in: $0, dockPID: dockPID, depth: depth + 1)
+        }
+    }
+
+    private func runningApplications(ofBundleIdentifier bundleIdentifier: String) -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).filter {
+            $0.activationPolicy == .regular
+        }
+    }
+
+    private func runningApplications(for element: AXUIElement) -> [NSRunningApplication] {
+        let itemURL = urlAttribute(kAXURLAttribute as CFString, of: element)
+        if let itemURL,
+           let bundleIdentifier = Bundle(url: itemURL)?.bundleIdentifier {
+            let candidates = runningApplications(ofBundleIdentifier: bundleIdentifier)
+            let itemPath = itemURL.standardizedFileURL.path
+            let exactMatches = candidates.filter {
+                $0.bundleURL?.standardizedFileURL.path == itemPath
+            }
+            return exactMatches.isEmpty ? candidates : exactMatches
+        }
+
+        guard let title = stringAttribute(kAXTitleAttribute as CFString, of: element) else {
+            return []
+        }
+        let candidates = NSWorkspace.shared.runningApplications.filter {
+            $0.activationPolicy == .regular && $0.localizedName == title
+        }
+        return candidates.count == 1 ? candidates : []
     }
 
     private func processIdentifier(of element: AXUIElement) -> pid_t? {
@@ -114,6 +168,49 @@ final class DockItemResolver {
 
     private func stringAttribute(_ attribute: CFString, of element: AXUIElement) -> String? {
         copyAttribute(attribute, of: element) as? String
+    }
+
+    private func elementsAttribute(
+        _ attribute: CFString,
+        of element: AXUIElement
+    ) -> [AXUIElement] {
+        copyAttribute(attribute, of: element) as? [AXUIElement] ?? []
+    }
+
+    private func rect(of element: AXUIElement) -> CGRect? {
+        guard let position = pointAttribute(kAXPositionAttribute as CFString, of: element),
+              let size = sizeAttribute(kAXSizeAttribute as CFString, of: element),
+              size.width > 0,
+              size.height > 0 else {
+            return nil
+        }
+        return CGRect(origin: position, size: size)
+    }
+
+    private func pointAttribute(_ attribute: CFString, of element: AXUIElement) -> CGPoint? {
+        guard let value = axValueAttribute(attribute, of: element),
+              AXValueGetType(value) == .cgPoint else {
+            return nil
+        }
+        var point = CGPoint.zero
+        return AXValueGetValue(value, .cgPoint, &point) ? point : nil
+    }
+
+    private func sizeAttribute(_ attribute: CFString, of element: AXUIElement) -> CGSize? {
+        guard let value = axValueAttribute(attribute, of: element),
+              AXValueGetType(value) == .cgSize else {
+            return nil
+        }
+        var size = CGSize.zero
+        return AXValueGetValue(value, .cgSize, &size) ? size : nil
+    }
+
+    private func axValueAttribute(_ attribute: CFString, of element: AXUIElement) -> AXValue? {
+        guard let value = copyAttribute(attribute, of: element),
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+        return unsafeDowncast(value, to: AXValue.self)
     }
 
     private func urlAttribute(_ attribute: CFString, of element: AXUIElement) -> URL? {

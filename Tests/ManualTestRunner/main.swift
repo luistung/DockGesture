@@ -183,6 +183,44 @@ let allPermissionsReady = PermissionGuidancePlan.make(
 expect(allPermissionsReady.permissionsReady, "权限齐全时应报告就绪")
 expect(!allPermissionsReady.showInputMonitoringGuide, "权限齐全时不得显示输入监控引导")
 
+expect(
+    DockApplicationIndicatorState.resolve(instances: []) == .none,
+    "未运行应用不应显示状态标记"
+)
+expect(
+    DockApplicationIndicatorState.resolve(instances: [
+        .init(isActive: true, isHidden: false)
+    ]) == .frontmost,
+    "当前前台应用应显示前台标记"
+)
+expect(
+    DockApplicationIndicatorState.resolve(instances: [
+        .init(isActive: false, isHidden: true),
+        .init(isActive: false, isHidden: true)
+    ]) == .hidden,
+    "全部实例隐藏时应显示隐藏标记"
+)
+expect(
+    DockApplicationIndicatorState.resolve(instances: [
+        .init(isActive: false, isHidden: true),
+        .init(isActive: false, isHidden: false)
+    ]) == .none,
+    "任一后台实例可见时应保持原样"
+)
+
+let indicatorFrame = DockStateIndicatorLayout.frame(
+    for: DockIndicatorRect(x: 10, y: 20, width: 50, height: 50)
+)
+expect(abs(indicatorFrame.width - 14) < 0.001, "50 点 Dock 图标应使用 14 点标记")
+expect(indicatorFrame.midX == 59, "标记应锚定 Dock 图标右侧")
+expect(indicatorFrame.midY == 69, "标记应锚定 Dock 图标上侧")
+
+let convertedDockFrame = DockAccessibilityCoordinateConverter.appKitRect(
+    from: DockIndicatorRect(x: 50, y: 900, width: 64, height: 64),
+    mainDisplayHeight: 1080
+)
+expect(convertedDockFrame.y == 116, "辅助功能纵坐标应转换为 AppKit 坐标")
+
 if failures == 0 {
     print("PASS: \(checks) checks")
 } else {

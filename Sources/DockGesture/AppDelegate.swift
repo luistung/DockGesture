@@ -11,7 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let permissionController = PermissionController()
     private let loginItemController = LoginItemController()
     private let actionController = AppActionController()
-    private let eventTap = DockEventTap(resolver: DockItemResolver())
+    private let dockItemResolver = DockItemResolver()
+    private lazy var eventTap = DockEventTap(resolver: dockItemResolver)
+    private lazy var stateIndicatorController = DockStateIndicatorController(
+        resolver: dockItemResolver
+    )
     private let guidancePresenter = PermissionGuidancePresenter()
 
     private var statusBarController: StatusBarController?
@@ -46,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         permissionTimer?.invalidate()
+        stateIndicatorController.stop()
         eventTap.stop()
     }
 
@@ -98,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func reevaluateRuntime() {
         guard featureEnabled else {
+            stateIndicatorController.stop()
             eventTap.stop()
             runtimeState = .paused
             refreshMenu()
@@ -106,15 +112,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let permissionStatus = permissionController.currentStatus
         guard permissionStatus.isReady else {
+            stateIndicatorController.stop()
             eventTap.stop()
             runtimeState = .needsPermissions(permissionStatus)
             refreshMenu()
             return
         }
 
-        runtimeState = eventTap.start()
-            ? .running
-            : .error("无法启动鼠标事件监听")
+        if eventTap.start() {
+            stateIndicatorController.start()
+            runtimeState = .running
+        } else {
+            stateIndicatorController.stop()
+            runtimeState = .error("无法启动鼠标事件监听")
+        }
         refreshMenu()
     }
 
