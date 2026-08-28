@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let permissionController = PermissionController()
     private let loginItemController = LoginItemController()
     private let actionController = AppActionController()
+    private let focusedWindowMover = FocusedWindowMover()
     private let dockItemResolver = DockItemResolver()
     private lazy var eventTap = DockEventTap(resolver: dockItemResolver)
     private lazy var stateIndicatorController = DockStateIndicatorController(
@@ -63,6 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         eventTap.onAction = { [weak self] action, resolved in
             self?.actionController.perform(action, on: resolved)
+        }
+        eventTap.onWindowMoveShortcut = { [weak self] in
+            guard let self else { return }
+            self.lastAction = self.focusedWindowMover.moveToNextDisplay()
+            self.refreshMenu()
         }
         eventTap.onFailure = { [weak self] message in
             self?.runtimeState = .error(message)
@@ -124,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runtimeState = .running
         } else {
             stateIndicatorController.stop()
-            runtimeState = .error("无法启动鼠标事件监听")
+            runtimeState = .error("无法启动输入事件监听")
         }
         refreshMenu()
     }

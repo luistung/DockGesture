@@ -18,12 +18,14 @@ private func dockGestureEventCallback(
 
 final class DockEventTap: @unchecked Sendable {
     var onAction: ((ApplicationAction, ResolvedDockApplication) -> Void)?
+    var onWindowMoveShortcut: (() -> Void)?
     var onFailure: ((String) -> Void)?
 
     private let resolver: DockItemResolver
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var suppressor = MouseUpSuppressor()
+    private var windowMoveShortcutClassifier = WindowMoveShortcutClassifier()
 
     init(resolver: DockItemResolver) {
         self.resolver = resolver
@@ -45,7 +47,9 @@ final class DockEventTap: @unchecked Sendable {
             .leftMouseDown,
             .leftMouseUp,
             .rightMouseDown,
-            .rightMouseUp
+            .rightMouseUp,
+            .keyDown,
+            .keyUp
         ]
         let mask = eventTypes.reduce(CGEventMask(0)) {
             $0 | (CGEventMask(1) << $1.rawValue)
@@ -59,7 +63,7 @@ final class DockEventTap: @unchecked Sendable {
             callback: dockGestureEventCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            onFailure?("无法创建鼠标事件监听")
+            onFailure?("无法创建输入事件监听")
             return false
         }
 
@@ -73,6 +77,7 @@ final class DockEventTap: @unchecked Sendable {
 
     func stop() {
         suppressor.reset()
+        windowMoveShortcutClassifier.reset()
         if let tap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -85,10 +90,15 @@ final class DockEventTap: @unchecked Sendable {
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            windowMoveShortcutClassifier.reset()
             if let tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
             return Unmanaged.passUnretained(event)
+        }
+
+        if type == .keyDown || type == .keyUp {
+            return handleKeyboard(type: type, event: event)
         }
 
         guard let button = mouseButton(for: type) else {
@@ -153,6 +163,46 @@ final class DockEventTap: @unchecked Sendable {
         if flags.contains(.maskAlternate) { result.insert(.option) }
         if flags.contains(.maskControl) { result.insert(.control) }
         if flags.contains(.maskShift) { result.insert(.shift) }
+        return result
+    }
+
+    private func handleKeyboard(
+        type: CGEventType,
+        event: CGEvent
+    ) -> Unmanaged<CGEvent>? {
+        let input = WindowMoveShortcutInput(
+            eventType: type == .keyDown ? .keyDown : .keyUp,
+            keyCode: UInt16(truncatingIfNeeded: event.getIntegerValueField(
+                .keyboardEventKeycode
+            )),
+            modifiers: windowMoveModifiers(from: event.flags),
+            isAutoRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        )
+
+        switch windowMoveShortcutClassifier.classify(input) {
+        case .passThrough:
+            return Unmanaged.passUnretained(event)
+        case .suppress:
+            return nil
+        case .triggerAndSuppress:
+            DispatchQueue.main.async { [weak self] in
+                self?.onWindowMoveShortcut?()
+            }
+            return nil
+        }
+    }
+
+    private func windowMoveModifiers(
+        from flags: CGEventFlags
+    ) -> WindowMoveShortcutModifiers {
+        var result: WindowMoveShortcutModifiers = []
+        if flags.contains(.maskSecondaryFn) { result.insert(.function) }
+        if flags.contains(.maskCommand) { result.insert(.command) }
+        if flags.contains(.maskAlternate) { result.insert(.option) }
+        if flags.contains(.maskControl) { result.insert(.control) }
+        if flags.contains(.maskShift) { result.insert(.shift) }
+        if flags.contains(.maskAlphaShift) { result.insert(.capsLock) }
+        if flags.contains(.maskNumericPad) { result.insert(.numericPad) }
         return result
     }
 }

@@ -29,7 +29,7 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026</string>
     <key>NSInputMonitoringUsageDescription</key>
-    <string>DockGesture 需要监听 Dock 上的鼠标点击和修饰键，以执行隐藏、退出和强制退出手势。</string>
+    <string>DockGesture 需要监听 Dock 鼠标手势和 Fn + Enter 键盘快捷键，以执行应用控制和窗口跨显示器移动。</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

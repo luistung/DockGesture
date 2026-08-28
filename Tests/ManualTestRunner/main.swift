@@ -221,6 +221,57 @@ let convertedDockFrame = DockAccessibilityCoordinateConverter.appKitRect(
 )
 expect(convertedDockFrame.y == 116, "辅助功能纵坐标应转换为 AppKit 坐标")
 
+var windowShortcut = WindowMoveShortcutClassifier()
+expect(
+    windowShortcut.classify(.init(
+        eventType: .keyDown,
+        keyCode: WindowMoveShortcutKey.returnKeyCode,
+        modifiers: .function,
+        isAutoRepeat: false
+    )) == .triggerAndSuppress,
+    "Fn + Return 应触发窗口跨屏并拦截按键"
+)
+expect(
+    windowShortcut.classify(.init(
+        eventType: .keyDown,
+        keyCode: WindowMoveShortcutKey.returnKeyCode,
+        modifiers: [],
+        isAutoRepeat: true
+    )) == .suppress,
+    "Fn 先松开后，长按 Return 仍不应泄露或重复触发"
+)
+expect(
+    windowShortcut.classify(.init(
+        eventType: .keyUp,
+        keyCode: WindowMoveShortcutKey.returnKeyCode,
+        modifiers: [],
+        isAutoRepeat: false
+    )) == .suppress,
+    "Fn 先松开后仍应拦截对应 Return key-up"
+)
+
+let firstMoveDisplay = WindowMoveDisplay(
+    fullFrame: .init(x: 0, y: 0, width: 1000, height: 800),
+    visibleFrame: .init(x: 0, y: 20, width: 1000, height: 760)
+)
+let secondMoveDisplay = WindowMoveDisplay(
+    fullFrame: .init(x: 1000, y: 0, width: 1200, height: 900),
+    visibleFrame: .init(x: 1000, y: 20, width: 1200, height: 860)
+)
+let movePlanResult = DisplayCyclePlanner.plan(
+    window: .init(x: 100, y: 100, width: 400, height: 300),
+    displays: [firstMoveDisplay, secondMoveDisplay]
+)
+expect(movePlanResult.movePlan?.sourceDisplayIndex == 0, "应识别窗口所在显示器")
+expect(movePlanResult.movePlan?.targetDisplayIndex == 1, "应循环到下一台显示器")
+expect(
+    DisplayCyclePlanner.plan(
+        window: firstMoveDisplay.fullFrame,
+        displays: [firstMoveDisplay, secondMoveDisplay]
+    ) == .fullScreenWindow,
+    "全屏形状窗口应拒绝跨屏移动"
+)
+
 if failures == 0 {
     print("PASS: \(checks) checks")
 } else {
